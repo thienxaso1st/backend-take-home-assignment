@@ -79,13 +79,27 @@ export const friendshipRequestRouter = router({
        * scenario for Question 3
        *  - Run `yarn test` to verify your answer
        */
-      return ctx.db
-        .insertInto('friendships')
-        .values({
-          userId: ctx.session.userId,
-          friendUserId: input.friendUserId,
-          status: FriendshipStatusSchema.Values['requested'],
-        })
+      const friendships = await ctx.db
+        .selectFrom('friendships')
+        .select('id')
+        .where('friendships.userId', '=', ctx.session.userId)
+        .where('friendships.friendUserId', '=', input.friendUserId)
+        .execute()
+
+      if (!friendships.length) {
+        return ctx.db
+          .insertInto('friendships')
+          .values({
+            userId: ctx.session.userId,
+            friendUserId: input.friendUserId,
+            status: FriendshipStatusSchema.Values['requested'],
+          })
+          .execute()
+      }
+      return await ctx.db
+        .updateTable('friendships')
+        .set({ status: FriendshipStatusSchema.Values['requested'] })
+        .where('friendships.id', '=', friendships[0]!.id)
         .execute()
     }),
 
@@ -117,6 +131,34 @@ export const friendshipRequestRouter = router({
          *  - https://kysely-org.github.io/kysely/classes/Kysely.html#insertInto
          *  - https://kysely-org.github.io/kysely/classes/Kysely.html#updateTable
          */
+        await t
+          .updateTable('friendships')
+          .set({ status: FriendshipStatusSchema.Values['accepted'] })
+          .where('friendships.userId', '=', input.friendUserId)
+          .where('friendships.friendUserId', '=', ctx.session.userId)
+          .execute()
+        const friendships = await t
+          .selectFrom('friendships')
+          .select('id')
+          .where('friendships.userId', '=', ctx.session.userId)
+          .where('friendships.friendUserId', '=', input.friendUserId)
+          .execute()
+        if (!friendships.length) {
+          await t
+            .insertInto('friendships')
+            .values({
+              userId: ctx.session.userId,
+              friendUserId: input.friendUserId,
+              status: FriendshipStatusSchema.Values['accepted'],
+            })
+            .execute()
+        } else {
+          await t
+            .updateTable('friendships')
+            .set({ status: FriendshipStatusSchema.Values['accepted'] })
+            .where('friendships.id', '=', friendships[0]!.id)
+            .execute()
+        }
       })
     }),
 
@@ -137,5 +179,20 @@ export const friendshipRequestRouter = router({
        * Documentation references:
        *  - https://vitest.dev/api/#test-skip
        */
+      await ctx.db
+        .updateTable('friendships')
+        .set({ status: FriendshipStatusSchema.Values['declined'] })
+        .where('friendships.userId', '=', input.friendUserId)
+        .where('friendships.friendUserId', '=', ctx.session.userId)
+        .where(
+          'friendships.status',
+          '=',
+          FriendshipStatusSchema.Values['requested']
+        )
+        .executeTakeFirstOrThrow(() => {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+          })
+        })
     }),
 })

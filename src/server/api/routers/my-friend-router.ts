@@ -47,6 +47,11 @@ export const myFriendRouter = router({
             'userTotalFriendCount.userId',
             'friends.id'
           )
+          .innerJoin(
+            userMutualFriendCount(conn).as('userMutualFriendCount'),
+            'userMutualFriendCount.user',
+            'friends.id'
+          )
           .where('friendships.userId', '=', ctx.session.userId)
           .where('friendships.friendUserId', '=', input.friendUserId)
           .where(
@@ -59,6 +64,7 @@ export const myFriendRouter = router({
             'friends.fullName',
             'friends.phoneNumber',
             'totalFriendCount',
+            'mutualFriendCount',
           ])
           .executeTakeFirstOrThrow(() => new TRPCError({ code: 'NOT_FOUND' }))
           .then(
@@ -83,4 +89,18 @@ const userTotalFriendCount = (db: Database) => {
       eb.fn.count('friendships.friendUserId').as('totalFriendCount'),
     ])
     .groupBy('friendships.userId')
+}
+
+const userMutualFriendCount = (db: Database) => {
+  return db
+    .selectFrom('friendships as f1')
+    .innerJoin('friendships as f2', 'f1.friendUserId', 'f2.friendUserId')
+    .where('f1.status', '=', FriendshipStatusSchema.Values['accepted'])
+    .where('f2.status', '=', FriendshipStatusSchema.Values['accepted'])
+    .select((eb) => [
+      'f1.userId as user',
+      'f2.userId as friend',
+      eb.fn.count('f1.friendUserId').as('mutualFriendCount'),
+    ])
+    .groupBy(['f1.userId', 'f2.userId'])
 }
