@@ -79,27 +79,35 @@ export const friendshipRequestRouter = router({
        * scenario for Question 3
        *  - Run `yarn test` to verify your answer
        */
-      const friendships = await ctx.db
+      const existedFriendship = await ctx.db
         .selectFrom('friendships')
-        .select('id')
+        .select('status')
         .where('friendships.userId', '=', ctx.session.userId)
         .where('friendships.friendUserId', '=', input.friendUserId)
         .execute()
 
-      if (!friendships.length) {
-        return ctx.db
-          .insertInto('friendships')
-          .values({
-            userId: ctx.session.userId,
-            friendUserId: input.friendUserId,
-            status: FriendshipStatusSchema.Values['requested'],
-          })
+      if (existedFriendship.length) {
+        if (
+          existedFriendship[0]?.status ===
+          FriendshipStatusSchema.Values['accepted']
+        ) {
+          return
+        }
+        return await ctx.db
+          .updateTable('friendships')
+          .set({ status: FriendshipStatusSchema.Values['requested'] })
+          .where('friendships.userId', '=', ctx.session.userId)
+          .where('friendships.friendUserId', '=', input.friendUserId)
           .execute()
       }
-      return await ctx.db
-        .updateTable('friendships')
-        .set({ status: FriendshipStatusSchema.Values['requested'] })
-        .where('friendships.id', '=', friendships[0]!.id)
+
+      return ctx.db
+        .insertInto('friendships')
+        .values({
+          userId: ctx.session.userId,
+          friendUserId: input.friendUserId,
+          status: FriendshipStatusSchema.Values['requested'],
+        })
         .execute()
     }),
 
@@ -137,13 +145,15 @@ export const friendshipRequestRouter = router({
           .where('friendships.userId', '=', input.friendUserId)
           .where('friendships.friendUserId', '=', ctx.session.userId)
           .execute()
-        const friendships = await t
+
+        const oppositeFriendship = await t
           .selectFrom('friendships')
           .select('id')
           .where('friendships.userId', '=', ctx.session.userId)
           .where('friendships.friendUserId', '=', input.friendUserId)
           .execute()
-        if (!friendships.length) {
+
+        if (!oppositeFriendship.length) {
           await t
             .insertInto('friendships')
             .values({
@@ -156,7 +166,8 @@ export const friendshipRequestRouter = router({
           await t
             .updateTable('friendships')
             .set({ status: FriendshipStatusSchema.Values['accepted'] })
-            .where('friendships.id', '=', friendships[0]!.id)
+            .where('friendships.userId', '=', ctx.session.userId)
+            .where('friendships.friendUserId', '=', input.friendUserId)
             .execute()
         }
       })
@@ -189,10 +200,6 @@ export const friendshipRequestRouter = router({
           '=',
           FriendshipStatusSchema.Values['requested']
         )
-        .executeTakeFirstOrThrow(() => {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-          })
-        })
+        .execute()
     }),
 })
