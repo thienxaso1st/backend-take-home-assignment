@@ -30,10 +30,5 @@
   "typescript.updateImportsOnFileMove.enabled": "always",
   "typescript.preferences.importModuleSpecifier": "shortest",
   "javascript.updateImportsOnFileMove.enabled": "always",
-  "javascript.preferences.importModuleSpecifier": "shortest",
-  "workbench.colorCustomizations": {
-    "activityBar.background": "#4A1C42",
-    "titleBar.activeBackground": "#67275C",
-    "titleBar.activeForeground": "#FDF9FC"
-  }
+  "javascript.preferences.importModuleSpecifier": "shortest"
 }
