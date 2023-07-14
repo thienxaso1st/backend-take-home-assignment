@@ -2,6 +2,7 @@ import type { Database } from '@/server/db'
 
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
+import { sql } from 'kysely'
 
 import { FriendshipStatusSchema } from '@/utils/server/friendship-schemas'
 import { protectedProcedure } from '@/server/trpc/procedures'
@@ -47,8 +48,12 @@ export const myFriendRouter = router({
             'userTotalFriendCount.userId',
             'friends.id'
           )
-          .innerJoin(
-            userMutualFriendCount(conn).as('userMutualFriendCount'),
+          .leftJoin(
+            userMutualFriendCount(
+              conn,
+              ctx.session.userId,
+              input.friendUserId
+            ).as('userMutualFriendCount'),
             'userMutualFriendCount.user',
             'friends.id'
           )
@@ -59,12 +64,14 @@ export const myFriendRouter = router({
             '=',
             FriendshipStatusSchema.Values['accepted']
           )
-          .select([
+          .select((eb) => [
             'friends.id',
             'friends.fullName',
             'friends.phoneNumber',
             'totalFriendCount',
-            'mutualFriendCount',
+            eb.fn
+              .coalesce('mutualFriendCount', sql<number>`0`)
+              .as('mutualFriendCount'),
           ])
           .executeTakeFirstOrThrow(() => new TRPCError({ code: 'NOT_FOUND' }))
           .then(
@@ -91,16 +98,22 @@ const userTotalFriendCount = (db: Database) => {
     .groupBy('friendships.userId')
 }
 
-const userMutualFriendCount = (db: Database) => {
+const userMutualFriendCount = (
+  db: Database,
+  userId: number,
+  friendUserId: number
+) => {
   return db
     .selectFrom('friendships as f1')
     .innerJoin('friendships as f2', 'f1.friendUserId', 'f2.friendUserId')
     .where('f1.status', '=', FriendshipStatusSchema.Values['accepted'])
     .where('f2.status', '=', FriendshipStatusSchema.Values['accepted'])
+    .where('f1.userId', '=', friendUserId)
+    .where('f2.userId', '=', userId)
     .select((eb) => [
       'f1.userId as user',
       'f2.userId as friend',
-      eb.fn.count('f1.friendUserId').as('mutualFriendCount'),
+      eb.fn.countAll().as('mutualFriendCount'),
     ])
     .groupBy(['f1.userId', 'f2.userId'])
 }
